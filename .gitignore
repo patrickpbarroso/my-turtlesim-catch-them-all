@@ -6,6 +6,9 @@ install/
 log/
 build/
 
+## template
+template.py
+
 # Ignore generated docs
 *.dox
 *.wikidoc
