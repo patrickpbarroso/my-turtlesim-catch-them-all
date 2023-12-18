@@ -13,8 +13,10 @@ from turtle_interfaces.srv import CatchTurtle
 class TurtleControllerNode(Node): 
     def __init__(self):
         super().__init__("turtle_controller")
+        self.declare_parameter("catch_closest_turtle_first", True)
+
+        self.catch_closest_turtle_first_ = self.get_parameter("catch_closest_turtle_first").value
         self.turtle_to_catch_ = None
-        self.catch_closest_turtle_first_ = True
         self.pose_ = None
         self.cmd_vel_publisher_ = self.create_publisher(
             Twist, "turtle1/cmd_vel", 10)
