@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 import math
+from functools import partial
 import rclpy
 from rclpy.node import Node
 
 from turtlesim.msg import Pose
 from geometry_msgs.msg import Twist
 from turtle_interfaces.msg import Turtle, TurtleArray
+from turtle_interfaces.srv import CatchTurtle
 
 
 class TurtleControllerNode(Node): 
     def __init__(self):
         super().__init__("turtle_controller")
         self.turtle_to_catch_ = None
+        self.catch_closest_turtle_first_ = True
         self.pose_ = None
         self.cmd_vel_publisher_ = self.create_publisher(
             Twist, "turtle1/cmd_vel", 10)
@@ -27,7 +30,20 @@ class TurtleControllerNode(Node):
     
     def callback_alive_turtles(self, msg):
         if len(msg.turtles) > 0:
-            self.turtle_to_catch_ = msg.turtles[0]
+            if self.catch_closest_turtle_first_:
+                closest_turtle_ = None
+                closest_turtle_distance_ = None
+
+                for turtle in msg.turtles:
+                    dist_x = turtle.x - self.pose_.x
+                    dist_y = turtle.y - self.pose_.y
+                    distance = math.sqrt(dist_x**2 + dist_y**2 )
+                    if closest_turtle_ == None or distance < closest_turtle_distance_:
+                        closest_turtle_ = turtle
+                        closest_turtle_distance_ = distance
+                    self.turtle_to_catch_ = closest_turtle_ 
+            else:
+                self.turtle_to_catch_ = msg.turtles[0]
 
     def control_loop(self):
         if self.pose_ ==  None or self.turtle_to_catch_ == None:
@@ -56,9 +72,31 @@ class TurtleControllerNode(Node):
             # target reached
             msg.linear.x = 0.0
             msg.angular.z = 0.0
+            self.call_catch_turtle_server(self.turtle_to_catch_.name)
+            self.turtle_to_catch_ = None
 
         self.cmd_vel_publisher_.publish(msg)
-        
+    
+    def call_catch_turtle_server(self, turtle_name):
+        client = self.create_client(CatchTurtle, "catch_turtle")
+        while not client.wait_for_service(1.0):
+            self.get_logger().warn("Waiting for Server...")
+
+        request = CatchTurtle.Request()
+        request.name = turtle_name
+
+        future = client.call_async(request)
+        future.add_done_callback(
+            partial(self.callback_call_catch_turtle, turtle_name=turtle_name))
+
+    def callback_call_catch_turtle(self, future, turtle_name):
+        try:
+            response = future.result()
+            if not response.success:
+                self.get_logger().error("Turtle " + str(turtle_name) + " could not be caught")
+
+        except Exception as e:
+            self.get_logger().error("Service call failed %r" % (e,))
 
 def main(args=None):
     rclpy.init(args=args)
